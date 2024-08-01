@@ -145,11 +145,12 @@
         const params = new URLSearchParams(fragment);
         const param1 = params.get('data');
         const svgTextureUrl = param1.toString();
+        const corsProxy = 'https://cors-anywhere.herokuapp.com/';
 
         //const param1 = params.get('data'); // Decodes 'value%201' to 'value 1'
         const param2 = params.get('shape'); // Decodes 'value%202' to 'value 2'
 
-        const textureUrl = await loadImageAsTexture(svgTextureUrl);
+        //const textureUrl = await loadImageAsTexture(svgTextureUrl);
 
         //const blob = await response.blob();
         //const blobUrl = URL.createObjectURL(blob);
@@ -163,6 +164,10 @@
         const newTextureUrl = param1.toString();
 
         try {
+
+          const response = await fetch(corsProxy + imageUrl);
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
           // Ensure the model is fully loaded
           const model = modelViewerTexture1.model;
           if (!model) {
@@ -178,7 +183,7 @@
           }
 
           // Create and apply the texture
-          const texture = await modelViewerTexture1.createTexture(textureUrl);
+          const texture = await modelViewerTexture1.createTexture(objectUrl);
           if (material.pbrMetallicRoughness) {
             material.pbrMetallicRoughness.baseColorTexture.setTexture(texture);
           } else {
