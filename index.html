@@ -1,99 +1,200 @@
 <!doctype html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport"
-        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
-  <title>Hello WebXR!</title>
+<html lang="en">
 
-  <!-- three.js -->
-  <script src="https://unpkg.com/three@0.126.0/build/three.js"></script>
+<head>
+  <title>&lt;model-viewer&gt; template</title>
+  <meta charset="utf-8">
+  <meta name="description" content="&lt;model-viewer&gt; template">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link type="text/css" href="./styles.css" rel="stylesheet" />
 </head>
+
 <body>
 
-<!-- Starting an immersive WebXR session requires user interaction.
-    We start this one with a simple button. -->
-<button onclick="activateXR()">Start Hello WebXR</button>
-<script>
-async function activateXR() {
-  // Add a canvas element and initialize a WebGL context that is compatible with WebXR.
-  const canvas = document.createElement("canvas");
-  document.body.appendChild(canvas);
-  const gl = canvas.getContext("webgl", {xrCompatible: true});
 
-  // To be continued in upcoming steps.
-  const scene = new THREE.Scene();
+  <!-- <model-viewer> HTML element -->
+  <model-viewer id="model" src="rect.glb" alt="A 3D model" ar ar-modes="webxr scene-viewer quick-look" camera-controls
+    tone-mapping="neutral" poster="poster.webp" shadow-intensity="0.1">
 
-// The cube will have a different color on each side.
-const materials = [
-  new THREE.MeshBasicMaterial({color: 0xff0000}),
-  new THREE.MeshBasicMaterial({color: 0x0000ff}),
-  new THREE.MeshBasicMaterial({color: 0x00ff00}),
-  new THREE.MeshBasicMaterial({color: 0xff00ff}),
-  new THREE.MeshBasicMaterial({color: 0x00ffff}),
-  new THREE.MeshBasicMaterial({color: 0xffff00})
-];
 
-// Create the cube and add it to the demo scene.
-const cube = new THREE.Mesh(new THREE.BoxBufferGeometry(0.2, 0.2, 0.2), materials);
-cube.position.set(1, 1, 1);
-scene.add(cube);
 
-// Set up the WebGLRenderer, which handles rendering to the session's base layer.
-const renderer = new THREE.WebGLRenderer({
-  alpha: true,
-  preserveDrawingBuffer: true,
-  canvas: canvas,
-  context: gl
-});
-renderer.autoClear = false;
 
-// The API directly updates the camera matrices.
-// Disable matrix auto updates so three.js doesn't attempt
-// to handle the matrices independently.
-const camera = new THREE.PerspectiveCamera();
-camera.matrixAutoUpdate = false;
+    <div class="progress-bar" slot="progress-bar">
+      <div class="update-bar"></div>
+    </div>
+    <button slot="ar-button" id="ar-button">
+      View in your space
+    </button>
+    <div id="ar-prompt">
+      <img src="ar_hand_prompt.png">
+    </div>
 
-// Initialize a WebXR session using "immersive-ar".
-const session = await navigator.xr.requestSession("immersive-ar");
-session.updateRenderState({
-  baseLayer: new XRWebGLLayer(session, gl)
-});
 
-// A 'local' reference space has a native origin that is located
-// near the viewer's position at the time the session was created.
-const referenceSpace = await session.requestReferenceSpace('local');
 
-// Create a render loop that allows us to draw on the AR view.
-const onXRFrame = (time, frame) => {
-  // Queue up the next draw request.
-  session.requestAnimationFrame(onXRFrame);
 
-  // Bind the graphics framebuffer to the baseLayer's framebuffer
-  gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer)
+  </model-viewer>
+  <script src="script.js"></script>
 
-  // Retrieve the pose of the device.
-  // XRFrame.getViewerPose can return null while the session attempts to establish tracking.
-  const pose = frame.getViewerPose(referenceSpace);
-  if (pose) {
-    // In mobile AR, we only have one view.
-    const view = pose.views[0];
 
-    const viewport = session.renderState.baseLayer.getViewport(view);
-    renderer.setSize(viewport.width, viewport.height)
 
-    // Use the view's transform matrix and projection matrix to configure the THREE.camera.
-    camera.matrix.fromArray(view.transform.matrix)
-    camera.projectionMatrix.fromArray(view.projectionMatrix);
-    camera.updateMatrixWorld(true);
 
-    // Render the scene with THREE.WebGLRenderer.
-    renderer.render(scene, camera)
-  }
-}
-session.requestAnimationFrame(onXRFrame);
+  <!-- Loads <model-viewer> for browsers: -->
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
 
-}
-</script>
+  <script type="module">
+
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function isBase64(str) {
+      try {
+        return btoa(atob(str)) === str;
+      } catch (err) {
+        return false;
+      }
+    }
+
+    async function fetchWithExponentialBackoff(url, retries = 5, delayTime = 1000) {
+      let attempt = 0;
+      while (attempt < retries) {
+        try {
+          const response = await fetch(url, { mode: 'cors' });
+          if (response.status === 429) {
+            const retryAfter = response.headers.get('Retry-After');
+            const waitTime = retryAfter ? parseInt(retryAfter, 10) * 1000 : delayTime * Math.pow(2, attempt);
+            await delay(waitTime);
+            attempt++;
+            continue;
+          }
+          return response;
+        } catch (error) {
+          if (attempt === retries - 1) throw error;
+          await delay(delayTime * Math.pow(2, attempt));
+          attempt++;
+        }
+      }
+      throw new Error('Max retries reached');
+    }
+
+    async function loadImageAsTexture(base64) {
+      if (!isBase64(base64)) {
+        throw new Error('Invalid Base64 string');
+      }
+
+      const img = new Image();
+      img.src = `data:image/png;base64,${base64}`;
+      await new Promise((resolve) => {
+        img.onload = resolve;
+      });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      return canvas.toDataURL('image/png');
+    }
+
+    async function loadImageAsTexture1(url) {
+      const response = await fetchWithExponentialBackoff(url);
+      const blob = await response.blob();
+      const imgType = blob.type;
+
+      if (imgType === 'image/svg+xml') {
+        const svgText = await blob.text();
+        const blobUrl = URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' }));
+
+        const img = new Image();
+        img.src = blobUrl;
+        await new Promise((resolve) => {
+          img.onload = resolve;
+        });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        const textureUrl = canvas.toDataURL('image/png');
+        return textureUrl;
+      } else if (imgType === 'image/png' || imgType === 'image/jpeg') {
+        return URL.createObjectURL(blob);
+      } else {
+        throw new Error('Unsupported image type');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const modelViewerTexture1 = document.querySelector("#model");
+
+      modelViewerTexture1.addEventListener("load", async () => {
+        //------------------------------------------------------------------------------------
+        //** get data from URL */
+        //------------------------------------------------------------------------------------
+        // Example URL with encoded fragment
+        const url = 'https://example.com/page#data=value%201&shape=value%202';
+
+        const currentUrl = window.location.href;
+        const urlObject = new URL(currentUrl);
+        const fragment = urlObject.hash.substring(1);
+        const params = new URLSearchParams(fragment);
+        const param1 = params.get('data');
+        const svgTextureUrl = param1.toString();
+
+        //const param1 = params.get('data'); // Decodes 'value%201' to 'value 1'
+        const param2 = params.get('shape'); // Decodes 'value%202' to 'value 2'
+
+        const textureUrl = await loadImageAsTexture(svgTextureUrl);
+
+        //const blob = await response.blob();
+        //const blobUrl = URL.createObjectURL(blob);
+
+        console.log('data:', param1);
+        console.log('shape:', param2);
+        //------------------------------------------------------------------------------------
+        //------------------------------------------------------------------------------------
+
+        // URL of the new texture
+        const newTextureUrl = param1.toString();
+
+        try {
+          // Ensure the model is fully loaded
+          const model = modelViewerTexture1.model;
+          if (!model) {
+            console.error('Model not found');
+            return;
+          }
+
+          // Assume you want to apply the texture to the first material
+          const material = model.materials[0];
+          if (!material) {
+            console.error('Material not found');
+            return;
+          }
+
+          // Create and apply the texture
+          const texture = await modelViewerTexture1.createTexture(textureUrl);
+          if (material.pbrMetallicRoughness) {
+            material.pbrMetallicRoughness.baseColorTexture.setTexture(texture);
+          } else {
+            console.error('Material does not support pbrMetallicRoughness');
+          }
+
+
+
+
+        } catch (error) {
+          console.error('An error occurred while applying the texture:', error);
+        }
+      });
+    });
+  </script>
+
+
 </body>
+
+
 </html>
