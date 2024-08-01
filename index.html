@@ -165,7 +165,7 @@
 
         try {
 
-          const response = await fetch(corsProxy + svgTextureUrl);
+          const response = await fetch(svgTextureUrl);
           const blob = await response.blob();
           const objectUrl = URL.createObjectURL(blob);
           // Ensure the model is fully loaded
